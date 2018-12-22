@@ -47,11 +47,16 @@ def like_medias(self, medias, check_media=True):
     if not medias:
         self.logger.info("Nothing to like.")
         return broken_items
+    self.logger.info("Start Logging")
     self.logger.info("Going to like %d medias." % (len(medias)))
+    start_count = self.total['likes']
     for media in tqdm(medias):
         if not self.like(media, check_media):
             self.error_delay()
             broken_items.append(media)
+        self.logger.info("Total Like:" + str(self.total['likes']))            
+        if self.total['likes'] != start_count and self.total['likes'] % 10 == 0:
+            break
     self.logger.info("DONE: Total liked %d medias." % self.total['likes'])
     return broken_items
 
