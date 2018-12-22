@@ -24,6 +24,10 @@ bot = Bot()
 bot.login(username=args.u, password=args.p,
           proxy=args.proxy)
 
-tags = ["workout"]
-for hashtag in tags:
-    bot.like_hashtag(hashtag)
+tags = ["pics_jp","vsco"]
+wait = 30 * 60  # in seconds
+
+while True:
+    for hashtag in tags:
+        bot.like_hashtag(hashtag)
+        sleep(wait)
