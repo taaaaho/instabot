@@ -24,10 +24,10 @@ bot = Bot()
 bot.login(username=args.u, password=args.p,
           proxy=args.proxy)
 
-tags = ["pics_jp","vsco"]
-wait = 30 * 60  # in seconds
+tags = ["pics_jp","portrait","写真好きな人と繋がりたい","ファインダー越しの私の世界"]
+wait = 25 * 60  # in seconds
 
 while True:
     for hashtag in tags:
         bot.like_hashtag(hashtag)
-        sleep(wait)
+    sleep(wait)
