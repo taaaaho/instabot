@@ -33,5 +33,5 @@ while True:
         for hashtag in tags:
             bot.like_hashtag(hashtag)
             sleep(wait)
-    except expression as identifier:
+    except:
         sleep(retry)
