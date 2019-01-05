@@ -25,9 +25,13 @@ bot.login(username=args.u, password=args.p,
           proxy=args.proxy)
 
 tags = ["pics_jp","portrait","写真好きな人と繋がりたい","ファインダー越しの私の世界"]
-wait = 25 * 60  # in seconds
+wait = 25 * 60  # in seconds => 25 minutes
+retry = 5 * 60 * 60 # in hours => 5 hours
 
 while True:
-    for hashtag in tags:
-        bot.like_hashtag(hashtag)
-    sleep(wait)
+    try:
+        for hashtag in tags:
+            bot.like_hashtag(hashtag)
+            sleep(wait)
+    except expression as identifier:
+        sleep(retry)
