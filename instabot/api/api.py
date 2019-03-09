@@ -3,6 +3,7 @@ import hmac
 import json
 import logging
 import os
+import sys
 import time
 import uuid
 from random import uniform
@@ -21,6 +22,8 @@ from . import config, devices
 from .api_photo import configure_photo, download_photo, upload_photo
 from .api_video import configure_video, download_video, upload_video
 from .prepare import delete_credentials, get_credentials
+
+PY2 = sys.version_info[0] == 2
 
 
 class API(object):
@@ -58,13 +61,16 @@ class API(object):
         self.uuid = self.generate_UUID(uuid_type=True)
 
     def login(self, username=None, password=None, force=False, proxy=None,
-              use_cookie=True, cookie_fname='cookie.txt'):
+              use_cookie=False, cookie_fname=None):
         if password is None:
             username, password = get_credentials(username=username)
 
         self.device_id = self.generate_device_id(self.get_seed(username, password))
         self.proxy = proxy
         self.set_user(username, password)
+
+        if not cookie_fname:
+            cookie_fname = "{username}_cookie.txt".format(username=username)
 
         cookie_is_loaded = False
         if use_cookie:
@@ -109,9 +115,7 @@ class API(object):
 
     def load_cookie(self, fname):
         # Python2 compatibility
-        try:
-            FileNotFoundError
-        except NameError:
+        if PY2:
             FileNotFoundError = IOError
 
         try:
@@ -180,6 +184,10 @@ class API(object):
                 return False
         else:
             self.logger.error("Request returns {} error!".format(response.status_code))
+            response_data = json.loads(response.text)
+            if "feedback_required" in str(response_data.get('message')):
+                self.logger.error("ATTENTION!: `feedback_required`, your action could have been blocked")
+                return "feedback_required"
             if response.status_code == 429:
                 sleep_minutes = 5
                 self.logger.warning(
@@ -254,8 +262,8 @@ class API(object):
         })
         return self.send_request('qe/expose/', data)
 
-    def upload_photo(self, photo, caption=None, upload_id=None):
-        return upload_photo(self, photo, caption, upload_id)
+    def upload_photo(self, photo, caption=None, upload_id=None, from_video=False):
+        return upload_photo(self, photo, caption, upload_id, from_video)
 
     def download_photo(self, media_id, filename, media=False, folder='photos'):
         return download_photo(self, media_id, filename, media, folder)
@@ -269,8 +277,8 @@ class API(object):
     def download_video(self, media_id, filename, media=False, folder='video'):
         return download_video(self, media_id, filename, media, folder)
 
-    def configure_video(self, upload_id, video, thumbnail, caption=''):
-        return configure_video(self, upload_id, video, thumbnail, caption)
+    def configure_video(self, upload_id, video, thumbnail, width, height, duration, caption=''):
+        return configure_video(self, upload_id, video, thumbnail, width, height, duration, caption)
 
     def edit_media(self, media_id, captionText=''):
         data = self.json_data({'caption_text': captionText})
@@ -283,9 +291,9 @@ class API(object):
         return self.send_request(url, data)
 
     def media_info(self, media_id):
-        data = self.json_data({'media_id': media_id})
+        # data = self.json_data({'media_id': media_id})
         url = 'media/{media_id}/info/'.format(media_id=media_id)
-        return self.send_request(url, data)
+        return self.send_request(url)
 
     def archive_media(self, media, undo=False):
         action = 'only_me' if not undo else 'undo_only_me'
@@ -315,6 +323,11 @@ class API(object):
 
     def comment(self, media_id, comment_text):
         data = self.json_data({'comment_text': comment_text})
+        url = 'media/{media_id}/comment/'.format(media_id=media_id)
+        return self.send_request(url, data)
+
+    def reply_to_comment(self, media_id, comment_text, parent_comment_id):
+        data = self.json_data({'comment_text': comment_text, 'replied_to_comment_id': parent_comment_id})
         url = 'media/{media_id}/comment/'.format(media_id=media_id)
         return self.send_request(url, data)
 
@@ -567,7 +580,18 @@ class API(object):
         url = 'feed/liked/?max_id={max_id}'.format(max_id=max_id)
         return self.send_request(url)
 
-    def get_total_followers_or_followings(self, user_id, amount=None, which='followers'):
+    def get_total_followers_or_followings(self,
+                                          user_id,
+                                          amount=None,
+                                          which='followers',
+                                          filter_private=False,
+                                          filter_business=False,
+                                          filter_verified=False,
+                                          usernames=False,
+                                          to_file=None,
+                                          overwrite=False):
+        from io import StringIO
+
         if which == 'followers':
             key = 'follower_count'
             get = self.get_user_followers
@@ -588,26 +612,54 @@ class API(object):
                       "operation. This will take a while.\n")
         else:
             return False
-
-        desc = "Getting {}".format(which)
-        with tqdm(total=total, desc=desc, leave=False) as pbar:
+        if filter_business:
+            print("--> You are going to filter business accounts. This will take time! <--")
+            from random import random
+        if to_file is not None:
+            if os.path.isfile(to_file):
+                if not overwrite:
+                    print("File `{}` already exists. Not overwriting.".format(to_file))
+                    return False
+                else:
+                    print("Overwriting file `{}`".format(to_file))
+            with open(to_file, 'w'):
+                pass
+        desc = "Getting {} of {}".format(which, user_id)
+        with tqdm(total=total, desc=desc, leave=True) as pbar:
             while True:
                 get(user_id, next_max_id)
                 last_json = self.last_json
                 try:
-                    pbar.update(len(last_json["users"]))
-                    for item in last_json["users"]:
-                        result.append(item)
-                        sleep_track += 1
-                        if sleep_track >= 20000:
-                            sleep_time = uniform(120, 180)
-                            msg = "\nWaiting {:.2f} min. due to too many requests."
-                            print(msg.format(sleep_time / 60))
-                            time.sleep(sleep_time)
-                            sleep_track = 0
+                    with open(to_file, 'a') if to_file is not None else StringIO() as f:
+                        for item in last_json["users"]:
+                            if filter_private and item['is_private']:
+                                continue
+                            if filter_business:
+                                time.sleep(2 * random())
+                                self.get_username_info(item['pk'])
+                                item_info = self.last_json
+                                if item_info['user']['is_business']:
+                                    continue
+                            if filter_verified and item['is_verified']:
+                                continue
+                            if to_file is not None:
+                                if usernames:
+                                    f.write("{}\n".format(item['username']))
+                                else:
+                                    f.write("{}\n".format(item['pk']))
+                            result.append(item)
+                            pbar.update(1)
+                            sleep_track += 1
+                            if sleep_track >= 20000:
+                                sleep_time = uniform(120, 180)
+                                msg = "\nWaiting {:.2f} min. due to too many requests."
+                                print(msg.format(sleep_time / 60))
+                                time.sleep(sleep_time)
+                                sleep_track = 0
                     if not last_json["users"] or len(result) >= total:
                         return result[:total]
-                except Exception:
+                except Exception as e:
+                    print("ERROR: {}".format(e))
                     return result[:total]
 
                 if last_json["big_list"] is False:
@@ -739,4 +791,67 @@ class API(object):
     def search_location(self, query='', lat=None, lng=None):
         url = 'fbsearch/places/?rank_token={rank_token}&query={query}&lat={lat}&lng={lng}'
         url = url.format(rank_token=self.rank_token, query=query, lat=lat, lng=lng)
+        return self.send_request(url)
+
+    def get_user_reel(self, user_id):
+        url = 'feed/user/{}/reel_media/'.format(user_id)
+        return self.send_request(url)
+
+    def get_user_stories(self, user_id):
+        url = 'feed/user/{}/story/'.format(user_id)
+        return self.send_request(url)
+
+    def get_self_story_viewers(self, story_id):
+
+        url = 'media/{}/list_reel_media_viewer/?supported_capabilities_new={}'.format(story_id,
+                                                                                      config.SUPPORTED_CAPABILITIES)
+        return self.send_request(url)
+
+    def get_tv_suggestions(self):
+        url = 'igtv/tv_guide/'
+        return self.send_request(url)
+
+    def get_hashtag_stories(self, hashtag):
+        url = 'tags/{}/story/'.format(hashtag)
+        return self.send_request(url)
+
+    def follow_hashtag(self, hashtag):
+        data = self.json_data({})
+        url = 'tags/follow/{}/'.format(hashtag)
+        return self.send_request(url, data)
+
+    def unfollow_hashtag(self, hashtag):
+        data = self.json_data({})
+        url = 'tags/unfollow/{}/'.format(hashtag)
+        return self.send_request(url, data)
+
+    def get_tags_followed_by_user(self, user_id):
+        url = 'users/{}/following_tags_info/'.format(user_id)
+        return self.send_request(url)
+
+    def get_hashtag_sections(self, hashtag):
+        data = self.json_data({'supported_tabs': "['top','recent','places']", 'include_persistent': 'true'})
+        url = 'tags/{}/sections/'.format(hashtag)
+        return self.send_request(url, data)
+
+    def get_media_insight(self, media_id):
+        url = 'insights/media_organic_insights/{}/?ig_sig_key_version={}'.format(media_id, config.IG_SIG_KEY)
+        return self.send_request(url)
+
+    def get_self_insight(self):
+        url = 'insights/account_organic_insights/?show_promotions_in_landing_page=true&first={}'.format()  # todo
+        return self.send_request(url)
+
+    def save_media(self, media_id):
+        data = self.json_data()
+        url = 'media/{}/save/'.format(media_id)
+        return self.send_request(url, data)
+
+    def unsave_media(self, media_id):
+        data = self.json_data()
+        url = 'media/{}/unsave/'.format(media_id)
+        return self.send_request(url, data)
+
+    def get_saved_medias(self):
+        url = 'feed/saved/'
         return self.send_request(url)

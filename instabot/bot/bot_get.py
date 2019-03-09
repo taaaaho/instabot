@@ -119,7 +119,7 @@ def get_locations_from_coordinates(self, latitude, longitude):
         location_lat = location["location"]["lat"]
         location_lng = location["location"]["lng"]
 
-        if int(location_lat) == int(latitude) and int(location_lng) == longitude:
+        if int(location_lat) == int(latitude) and int(location_lng) == int(longitude):
             filtered_locations.append(location)
 
     return filtered_locations
@@ -149,7 +149,7 @@ def get_timeline_users(self):
 
 def get_hashtag_users(self, hashtag):
     if not self.api.get_hashtag_feed(hashtag):
-        self.logger.warning("Error while getting hastag feed.")
+        self.logger.warning("Error while getting hashtag feed.")
         return []
     return [str(i['user']['pk']) for i in self.api.last_json['items']]
 

@@ -11,7 +11,7 @@ from .bot_block import block, block_bots, block_users, unblock, unblock_users
 from .bot_checkpoint import load_checkpoint, save_checkpoint
 from .bot_comment import (comment, comment_geotag, comment_hashtag,
                           comment_medias, comment_user, comment_users,
-                          is_commented)
+                          is_commented, reply_to_comment)
 from .bot_delete import delete_comment, delete_media, delete_medias
 from .bot_direct import (send_hashtag, send_like, send_media, send_medias,
                          send_message, send_messages, send_profile)
@@ -93,6 +93,7 @@ class Bot(object):
                  message_delay=60,
                  stop_words=('shop', 'store', 'free'),
                  blacklist_hashtags=['#shop', '#store', '#free'],
+                 blocked_actions_protection=True,
                  verbosity=True,
                  device=None
                  ):
@@ -138,6 +139,17 @@ class Bot(object):
                             'blocks': max_blocks_per_day,
                             'unblocks': max_unblocks_per_day,
                             'messages': max_messages_per_day}
+
+        self.blocked_actions_protection = blocked_actions_protection
+
+        self.blocked_actions = {'likes': False,
+                                'unlikes': False,
+                                'follows': False,
+                                'unfollows': False,
+                                'comments': False,
+                                'blocks': False,
+                                'unblocks': False,
+                                'messages': False}
 
         self.max_likes_to_like = max_likes_to_like
         self.min_likes_to_like = min_likes_to_like
@@ -254,12 +266,16 @@ class Bot(object):
     def prepare(self):
         storage = load_checkpoint(self)
         if storage is not None:
-            self.total, self.api.total_requests, self.start_time = storage
+            self.total, self.blocked_actions, self.api.total_requests, self.start_time = storage
 
     def print_counters(self):
         for key, val in self.total.items():
             if val > 0:
-                self.logger.info("Total {}: {}".format(key, val))
+                self.logger.info("Total {}: {}{}".format(key, val,
+                                                         "/" + str(self.max_per_day[key]) if self.max_per_day.get(key) else ""))
+        for key, val in self.blocked_actions.items():
+            if val:
+                self.logger.info("Blocked {}".format(key))
         self.logger.info("Total requests: {}".format(self.api.total_requests))
 
     def delay(self, key):
@@ -285,11 +301,13 @@ class Bot(object):
         passed_days = (current_date.date() - self.start_time.date()).days
         if passed_days > 0:
             self.reset_counters()
-        return self.max_per_day[key] - self.total[key] < 0
+        return self.max_per_day[key] - self.total[key] <= 0
 
     def reset_counters(self):
         for k in self.total:
             self.total[k] = 0
+        for k in self.blocked_actions:
+            self.blocked_actions[k] = False
         self.start_time = datetime.datetime.now()
 
     # getters
@@ -470,13 +488,13 @@ class Bot(object):
     def download_photos(self, medias, folder='photos', save_description=False):
         return download_photos(self, medias, folder, save_description)
 
-    def upload_photo(self, photo, caption=None, upload_id=None):
-        return upload_photo(self, photo, caption, upload_id)
+    def upload_photo(self, photo, caption=None, upload_id=None, from_video=False):
+        return upload_photo(self, photo, caption, upload_id, from_video)
 
     # video
 
-    def upload_video(self, video, thumbnail, caption=''):
-        return upload_video(self, video, thumbnail, caption)
+    def upload_video(self, video, caption=''):
+        return upload_video(self, video, caption)
 
     # follow
 
@@ -558,6 +576,9 @@ class Bot(object):
 
     def comment(self, media_id, comment_text):
         return comment(self, media_id, comment_text)
+
+    def reply_to_comment(self, media_id, comment_text, parent_comment_id):
+        return reply_to_comment(self, media_id, comment_text, parent_comment_id)
 
     def comment_hashtag(self, hashtag, amount=None):
         return comment_hashtag(self, hashtag, amount)
