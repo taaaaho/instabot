@@ -84,7 +84,7 @@ def like_medias(self, medias, check_media=True):
             self.error_delay()
             broken_items.append(media)
         self.logger.info("Total Like:" + str(self.total['likes']))            
-        if self.total['likes'] != start_count and self.total['likes'] % 10 == 0:
+        if self.total['likes'] != start_count and self.total['likes'] % 20 == 0:
             break
     self.logger.info("DONE: Total liked %d medias." % self.total['likes'])
     return broken_items
