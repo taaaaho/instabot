@@ -11,6 +11,8 @@ import os
 import sys
 from time import sleep
 
+# import line_notify
+
 sys.path.append(os.path.join(sys.path[0], '../'))
 from instabot import Bot
 
@@ -25,14 +27,17 @@ bot = Bot()
 bot.login(username=args.u, password=args.p,
           proxy=args.proxy)
 
-tags = ["pics_jp","portrait","写真好きな人と繋がりたい","ファインダー越しの私の世界"]
+tags =  ["いいねした人で気になった人フォロー","いいねした人全員フォローする","いいね返します","likeforlike","いいね返し","portrait","写真好きな人と繋がりたい","ファインダー越>しの私の世界"]
 wait = 25 * 60  # in seconds => 25 minutes
 retry = 5 * 60 * 60 # in hours => 5 hours
 
 while True:
     try:
         for hashtag in tags:
+            # line_notify.notify('Start Like:{0}'.format(hashtag)) 
             bot.like_hashtag(hashtag)
+            # line_notify.notify('Like:{0} Bot will sleep:{1} seconds'.format(str(bot.total['likes']), str(wait))) 
             sleep(wait)
-    except:
+    except Exception as e:
+        # line_notify.notify('Instabot Exception:'+ str(e))
         sleep(retry)
